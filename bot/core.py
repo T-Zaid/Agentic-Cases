@@ -164,44 +164,13 @@ class StateManager:
 # LLM CONNECTORS
 # ======================================================
 
-class BaseLLMConnector:
-    """Base class for LLM connectors."""
-    
-    async def determine_intent(self, user_input, conversation_history=None):
-        """Determine user intent from input."""
-        raise NotImplementedError
-    
-    async def generate_response(self, user_input, tool_response, conversation_history=None):
-        """Generate a response based on user input and tool outputs."""
-        raise NotImplementedError
 
 
-class OpenAIConnector(BaseLLMConnector):
-    """Connector for OpenAI's models."""
-    
-    async def determine_intent(self, user_input, conversation_history=None):
-        """Determine user intent using OpenAI."""
-        # Implementation would use OpenAI's API
-        pass
-    
-    async def generate_response(self, user_input, tool_response, conversation_history=None):
-        """Generate a response using OpenAI."""
-        # Implementation would use OpenAI's API
-        pass
 
 
-class AnthropicConnector(BaseLLMConnector):
-    """Connector for Anthropic's Claude."""
-    
-    async def determine_intent(self, user_input, conversation_history=None):
-        """Determine user intent using Anthropic."""
-        # Implementation would use Anthropic's API
-        pass
-    
-    async def generate_response(self, user_input, tool_response, conversation_history=None):
-        """Generate a response using Anthropic."""
-        # Implementation would use Anthropic's API
-        pass
+
+
+
 
 
 class GoogleAIConnector(BaseLLMConnector):
