@@ -7,7 +7,6 @@ from tools import add_to_cart, generate_receipt, lookup_order, get_product_info,
 from context import UserContext
 
 # Load environment variables from .env file
-load_dotenv("F:\Github_Projects\Agentic-Cases\.env")
 
 api_key = os.getenv("OPENAI_API_KEY")
 model = os.getenv("MODEL_CHOICE", "gpt-4o-mini")
@@ -19,6 +18,8 @@ order_agent = Agent[UserContext](
     instructions="""
         You are specialized in checking order status. You can:
         1. use lookup_order to check the status of an order
+
+        If the order ID is not provided by the user, ask them to provide it.
     """,
     model=model,
     tools=[lookup_order]
@@ -29,7 +30,7 @@ product_agent = Agent[UserContext](
     handoff_description="Specialist agent for providing specific product information and inventory details.",
     instructions="""
         You are specialized in providing product information. You can:
-        2. use get_product_info to provide information about a specific product
+        1. use get_product_info to provide information about a specific product or call it with None as parameter to list all available products.
         """,
     model=model,
     tools=[get_product_info]
@@ -51,19 +52,23 @@ cart_agent = Agent[UserContext](
 ShoeStoreAgent = Agent[UserContext](
     name="ShoeStoreAgent",
     instructions="""
-        You are an assistant for EOcean Shoe Store named Freddie. You help customers with:
+        You are an assistant for EOcean Shoe Store named Freddie.
+        You help customers with:
         1. Checking order status
-        2. Providing product information about our Running and Walking Shoes
-        3. Listing available inventory
-        4. Adding products to cart
-        5. Viewing cart contents
-        6. Generating receipts
+        2. Providing product information
+        3. Adding products to cart
+        4. Viewing cart contents
+        5. Generating receipts
 
         Use a friendly, helpful tone. If you don't understand a request or if it's for products we don't carry, politely explain what we do offer.
     """,
     handoffs=[order_agent, product_agent, cart_agent],
     model=model
 )
+
+order_agent.handoffs.append(ShoeStoreAgent)
+product_agent.handoffs.append(ShoeStoreAgent)
+cart_agent.handoffs.append(ShoeStoreAgent)
 
 
 async def main():
@@ -81,16 +86,16 @@ async def main():
             if isinstance(new_item, MessageOutputItem):
                 print(f"{agent_name}: {ItemHelpers.text_message_output(new_item)}")
             elif isinstance(new_item, HandoffOutputItem):
-                print(
-                    f"Handed off from {new_item.source_agent.name} to {new_item.target_agent.name}"
-                )
+                print(f"Handed off from {new_item.source_agent.name} to {new_item.target_agent.name}")
             elif isinstance(new_item, ToolCallItem):
                 print(f"{agent_name}: Calling a tool")
             elif isinstance(new_item, ToolCallOutputItem):
                 print(f"{agent_name}: Tool call output: {new_item.output}")
             else:
                 print(f"{agent_name}: Skipping item: {new_item.__class__.__name__}")
+
         input_items = result.to_input_list()
+        current_agent = result.last_agent
 
 
 if __name__ == "__main__":

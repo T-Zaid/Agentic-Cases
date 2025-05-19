@@ -22,7 +22,11 @@ def lookup_order(order_id: str) -> str:
 
 @function_tool
 def get_product_info(product_type: str) -> str:
-    """Provides information about the product based on the type."""
+    """Provides information about the product based on the type.
+    
+    Args:
+        product_type (str): The type of product to get information about (Either "running" or "walking" or "None" to list all).
+    """
     product_type = product_type.lower()
     if "running" in product_type:
         return "👟 Our Running Shoes are lightweight, breathable, and perfect for runners. Available sizes: Small, Medium, Large."
@@ -38,7 +42,13 @@ def list_inventory() -> str:
 
 @function_tool
 def add_to_cart( context: RunContextWrapper[UserContext], product: str, size: str) -> str:
-    """Adds a product to the user's cart."""
+    """
+    Adds a product to the user's cart.
+    
+    Args:
+        product (str): The product to add to the cart (Either "running" or "walking").
+        size (str): The size of the product (Either "small", medium", "large").
+    """
     if product.lower() in ["running", "walking"] and size.lower() in ["small", "medium", "large"]:
         user_id = context.context.user_id
         carts = user_carts.get(user_id, [])
