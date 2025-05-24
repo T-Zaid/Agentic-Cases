@@ -1,4 +1,5 @@
 from agents import Agent, HandoffOutputItem, ItemHelpers, MessageOutputItem, Runner, TResponseInputItem, ToolCallItem, ToolCallOutputItem
+from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX, prompt_with_handoff_instructions
 from dotenv import load_dotenv
 import asyncio
 import os
@@ -7,7 +8,9 @@ from tools import add_to_cart, generate_receipt, lookup_order, get_product_info,
 from context import UserContext
 
 # Load environment variables from .env file
+# load_dotenv("F:\Github_Projects\Agentic-Cases\.env")
 load_dotenv()
+
 api_key = os.getenv("OPENAI_API_KEY")
 model = os.getenv("MODEL_CHOICE", "gpt-4o-mini")
 print(api_key, model)
@@ -15,12 +18,13 @@ print(api_key, model)
 order_agent = Agent[UserContext](
     name="Order Agent",
     handoff_description="Specialist agent for order tracking based on the order ID.",
-    instructions="""
-        You are specialized in checking order status. You can:
-        1. use lookup_order to check the status of an order
+    instructions= prompt_with_handoff_instructions(f"""
+        You are specialized in checking order status, If you have recieved control, you will strictly follow the instructions below:
+        use lookup_order to check the status of an order.
+        If the order ID is not provided by the user, ask them to provide it. Do not mention that you are an order agent.
 
-        If the order ID is not provided by the user, ask them to provide it.
-    """,
+        Do not use your own knowledge or make assumptions about the store's policies or products, hand off to the appropriate agent.
+    """),
     model=model,
     tools=[lookup_order]
 )
@@ -28,9 +32,12 @@ order_agent = Agent[UserContext](
 product_agent = Agent[UserContext](
     name="Product Agent",
     handoff_description="Specialist agent for providing specific product information and inventory details.",
-    instructions="""
+    instructions=f"""
+        {RECOMMENDED_PROMPT_PREFIX}
         You are specialized in providing product information. You can:
         1. use get_product_info to provide information about a specific product or call it with None as parameter to list all available products.
+
+        Do not use your own knowledge or make assumptions about the store's policies or products, hand off to the appropriate agent.
         """,
     model=model,
     tools=[get_product_info]
@@ -38,48 +45,46 @@ product_agent = Agent[UserContext](
 
 cart_agent = Agent[UserContext](
     name="Cart Assistant",
-    handoff_description="Specialist agent for adding and modifying items to the cart and viewing cart contents or get the total price of cart.",
-    instructions="""
+    handoff_description="Specialist agent for adding items to the cart, viewing cart contents, and generating receipts.",
+    instructions=f"""
+        {RECOMMENDED_PROMPT_PREFIX}
+
         You are specialized in managing the user's cart. You can:
         1. use add_to_cart to add items to the cart
-        2. use modify_cart_item to update the quantity of a specific item in the cart (send quantity as 0 to remove the item)
-        3. use view_cart to view cart contents
+        2. use view_cart to view cart contents
+        3. use generate_receipt to generate final receipts.
 
-        If the size and quantity are not provided, ask the user to provide them.
+        Do not use your own knowledge or make assumptions about the store's policies or products, hand off to the appropriate agent.
     """,
     model=model,
-    tools=[add_to_cart, view_cart]
+    tools=[add_to_cart, view_cart, generate_receipt]
 )
 
 ShoeStoreAgent = Agent[UserContext](
     name="ShoeStoreAgent",
-    instructions="""
-        You are an assistant for EOcean Shoe Store named Freddie.
-        You help customers with:
-        1. Checking order status
-        2. Providing product information
-        3. Adding products to cart
-        4. Viewing cart contents
-        5. Generating receipts
+    handoff_description="Main agent for EOcean Shoe Store, coordinating between order, product, and cart agents.",
+    instructions=f"""
+        {RECOMMENDED_PROMPT_PREFIX}
 
+        You are an assistant for EOcean Shoe Store named Freddie.
+        You help customers with following:
+        1. For checking order status, handoff to the Order Agent.
+        2. For providing product information, handoff to the Product Agent.
+        3. handoff to Cart Agent for adding products to cart
+        4. handoff to Cart Agent for viewing cart contents
+        5. handoff to Cart Agent for generating receipts
+
+        Do not use your own knowledge or make assumptions about the store's policies or products, hand off to the appropriate agent.
+        Do not mention that you are transferring the user to another agent.
         Use a friendly, helpful tone. If you don't understand a request or if it's for products we don't carry, politely explain what we do offer.
     """,
-    tools=[
-        order_agent.as_tool(
-            tool_name="lookup_order",
-            tool_description="Check the status of an order using the order ID."
-        ),
-        product_agent.as_tool(
-            tool_name="get_product_info",
-            tool_description="Get information about a specific product or list all available products."
-        ),
-        cart_agent.as_tool(
-            tool_name="cart_management",
-            tool_description="Add or view items to the cart or generating a final receipt."
-        )
-    ],
+    handoffs=[order_agent, product_agent, cart_agent],
     model=model
 )
+
+order_agent.handoffs.append(ShoeStoreAgent)
+product_agent.handoffs.append(ShoeStoreAgent)
+cart_agent.handoffs.append(ShoeStoreAgent)
 
 
 async def main():
