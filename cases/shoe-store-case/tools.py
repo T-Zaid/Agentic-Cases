@@ -18,11 +18,36 @@ products = {
 }
 
 sample_orders = {
-    "ORD1001": {"product": "Running Shoes", "size": "Small", "status": "Shipped"},
-    "ORD1002": {"product": "Walking Shoes", "size": "Medium", "status": "Delivered"},
-    "ORD1003": {"product": "Running Shoes", "size": "Medium", "status": "Processing"},
-    "ORD1004": {"product": "Walking Shoes", "size": "Large", "status": "Delivered"},
-    "ORD1005": {"product": "Running Shoes", "size": "Small", "status": "Shipped"},
+    "ORD1001": {
+        "items": [
+            {"product": "Running Shoes", "size": "Small", "quantity": 2, "unit_price": 59.99}
+        ],
+        "status": "Shipped"
+    },
+    "ORD1002": {
+        "items": [
+            {"product": "Walking Shoes", "size": "Medium", "quantity": 1, "unit_price": 49.99}
+        ],
+        "status": "Delivered"
+    },
+    "ORD1003": {
+        "items": [
+            {"product": "Running Shoes", "size": "Medium", "quantity": 1, "unit_price": 59.99}
+        ],
+        "status": "Processing"
+    },
+    "ORD1004": {
+        "items": [
+            {"product": "Walking Shoes", "size": "Large", "quantity": 1, "unit_price": 49.99}
+        ],
+        "status": "Delivered"
+    },
+    "ORD1005": {
+        "items": [
+            {"product": "Running Shoes", "size": "Small", "quantity": 1, "unit_price": 59.99}
+        ],
+        "status": "Shipped"
+    }
 }
 
 user_carts = {}
@@ -137,18 +162,79 @@ def get_cart_total(context: RunContextWrapper[UserContext]) -> str:
 
 @function_tool
 def generate_receipt(context: RunContextWrapper[UserContext]) -> str:
-    """Generate a purchase receipt for the user and clear their cart."""
+    """
+    Generate a purchase receipt with order ID, email it to the user, and save the order details.
+    Clears the cart after checkout.
+    """
+    import smtplib
+    from email.mime.text import MIMEText
+
     user_id = context.context.user_id
-    cart = user_carts.get(user_id, None)
-    if not cart or cart is None:
+    email = context.context.email
+    cart = user_carts.get(user_id, [])
+
+    if not cart:
         return "🛍️ Your cart is empty. Add something before checking out."
 
-    receipt_lines = ["🧾 *Your Purchase Receipt:*"]
+    # --- Generate Order ID ---
+    order_number = max([int(order_id[3:]) for order_id in sample_orders.keys()] + [1000]) + 1
+    order_id = f"ORD{order_number}"
+
+    # --- Build receipt ---
+    total_price = 0.0
+    receipt_lines = [f"🧾 EOcean Shoe Store - Receipt\nOrder ID: {order_id}\n"]
+    order_items = []
+
     for i, item in enumerate(cart, 1):
-        receipt_lines.append(f"{i}. {item['product']} (Size: {item['size']})")
-    receipt_lines.append("✅ Thank you for shopping at EOcean Shoe Store!")
-    
-    # Clear cart after purchase
+        qty = item.get("quantity", 1)
+        unit_price = item.get("unit_price", 0.0)
+        line_total = qty * unit_price
+        total_price += line_total
+
+        receipt_lines.append(
+            f"{i}. {qty}x {item['product'].title()} ({item['size'].title()}) - "
+            f"${unit_price:.2f} each = ${line_total:.2f}"
+        )
+
+        # Add item to order list
+        order_items.append({
+            "product": item["product"].title(),
+            "size": item["size"].title(),
+            "quantity": qty,
+            "unit_price": unit_price
+        })
+
+    receipt_lines.append(f"\n💵 Total: ${total_price:.2f}")
+    receipt_lines.append("\n✅ Thank you for shopping at EOcean Shoe Store!")
+
+    receipt_text = "\n".join(receipt_lines)
+
+    # --- Save full order to sample_orders ---
+    sample_orders[order_id] = {
+        "items": order_items,
+        "status": "Processing"
+    }
+
+    # --- Email configuration (Ethereal) ---
+    smtp_server = "smtp.ethereal.email"
+    smtp_port = 587
+    ethereal_user = "rick.hirthe@ethereal.email"
+    ethereal_pass = "DBVpbKKH4R2WvB96pd"
+
+    msg = MIMEText(receipt_text)
+    msg["Subject"] = f"🧾 Your Receipt - Order {order_id}"
+    msg["From"] = ethereal_user
+    msg["To"] = email
+
+    try:
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(ethereal_user, ethereal_pass)
+            server.sendmail(ethereal_user, [email], msg.as_string())
+    except Exception as e:
+        return f"❌ Failed to send receipt email: {str(e)}"
+
+    # Clear the cart
     user_carts[user_id] = []
-    
-    return "\n".join(receipt_lines)
+
+    return f"📩 Receipt for Order {order_id} sent to {email}! Total price {total_price}"

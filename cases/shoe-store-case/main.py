@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 import asyncio
 import os
 
-from tools import add_to_cart, generate_receipt, lookup_order, get_product_info, view_cart
+from tools import add_to_cart, generate_receipt, lookup_order, get_product_info, view_cart, modify_cart_item, get_cart_total
 from context import UserContext
 
 # Load environment variables from .env file
@@ -42,13 +42,25 @@ cart_agent = Agent[UserContext](
     instructions="""
         You are specialized in managing the user's cart. You can:
         1. use add_to_cart to add items to the cart
-        2. use modify_cart_item to update the quantity of a specific item in the cart (send quantity as 0 to remove the item)
+        2. use modify_cart_item to update the quantity of a specific item or remove it from the cart (set quantity as 0 to remove the item)
         3. use view_cart to view cart contents
+        4. use get_cart_total to get the total price of the cart
 
-        If the size and quantity are not provided, ask the user to provide them.
+        If the size and quantity are not provided for the tools that require it, ask the user to provide them.
     """,
     model=model,
-    tools=[add_to_cart, view_cart]
+    tools=[add_to_cart, modify_cart_item, view_cart, get_cart_total]
+)
+
+checkout_agent = Agent[UserContext](
+    name="Checkout Agent",
+    handoff_description="Specialist agent for generating receipts and handling checkout.",
+    instructions="""
+        You are specialized in handling checkout and generating receipts. You can:
+        1. use generate_receipt to create a receipt for the user's cart. The tool will return the order ID, email address in which the email was sent to and total price of the order.
+    """,
+    model=model,
+    tools=[generate_receipt]
 )
 
 ShoeStoreAgent = Agent[UserContext](
@@ -60,7 +72,7 @@ ShoeStoreAgent = Agent[UserContext](
         2. Providing product information
         3. Adding products to cart
         4. Viewing cart contents
-        5. Generating receipts
+        5. Generating receipts, provide the user with order id and total price of the receipt.
 
         Use a friendly, helpful tone. If you don't understand a request or if it's for products we don't carry, politely explain what we do offer.
     """,
@@ -75,7 +87,11 @@ ShoeStoreAgent = Agent[UserContext](
         ),
         cart_agent.as_tool(
             tool_name="cart_management",
-            tool_description="Add or view items to the cart or generating a final receipt."
+            tool_description="Add items to the cart, modify cart items, view cart contents, or get the total price of the cart."
+        ),
+        checkout_agent.as_tool(
+            tool_name="generate_receipt",
+            tool_description="Generate a receipt/checkout for the user's cart. On success, the tool will return generated order ID, email address in which the email was sent to and total price of the order."
         )
     ],
     model=model
@@ -85,7 +101,7 @@ ShoeStoreAgent = Agent[UserContext](
 async def main():
     current_agent: Agent[UserContext] = ShoeStoreAgent
     input_items: list[TResponseInputItem] = []
-    context = UserContext(user_id="zaid")
+    context = UserContext(user_id="zaid", email="rick.hirthe@ethereal.email")
 
     while True:
         user_input = input("Enter your message: ")
