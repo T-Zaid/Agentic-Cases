@@ -1,10 +1,12 @@
 from agents import Agent, HandoffOutputItem, ItemHelpers, MessageOutputItem, Runner, TResponseInputItem, ToolCallItem, ToolCallOutputItem
-from dotenv import load_dotenv
+from agents.voice import SingleAgentVoiceWorkflow, VoicePipelineConfig, TTSModelSettings, VoicePipeline, AudioInput
+from dotenv import find_dotenv, load_dotenv
 import asyncio
 import os
+import numpy as np
 
-from tools import add_to_cart, generate_receipt, lookup_order, get_product_info, view_cart, modify_cart_item, get_cart_total
-from context import UserContext
+from .tools import add_to_cart, generate_receipt, lookup_order, get_product_info, view_cart, modify_cart_item, get_cart_total
+from .context import UserContext
 
 # Load environment variables from .env file
 load_dotenv()
@@ -75,6 +77,8 @@ ShoeStoreAgent = Agent[UserContext](
         5. Generating receipts, provide the user with order id and total price of the receipt.
 
         Use a friendly, helpful tone. If you don't understand a request or if it's for products we don't carry, politely explain what we do offer.
+
+        Note that the user may be speaking to you via a voice interface, so ensure your responses are conversational and easily translatable to speech.
     """,
     tools=[
         order_agent.as_tool(
@@ -96,6 +100,122 @@ ShoeStoreAgent = Agent[UserContext](
     ],
     model=model
 )
+
+workflow = SingleAgentVoiceWorkflow(ShoeStoreAgent)
+
+custom_tts_settings = TTSModelSettings(
+    voice="echo",
+    instructions=(
+        "Personality: friendly, helpful shoe store assistant.\\n"
+        "Tone: Warm, professional, and conversational, making customers feel welcome.\\n"
+        "Pronunciation: Clear and articulate, ensuring product names and prices are easily understood.\\n"
+        "Tempo: Natural conversational pace with brief pauses for clarity.\\n"
+        "Emotion: Enthusiastic about helping customers find the perfect shoes."
+    )
+)
+
+voice_pipeline_config = VoicePipelineConfig(tts_settings=custom_tts_settings)
+voice_pipeline = VoicePipeline(workflow=workflow, config=voice_pipeline_config)
+
+async def test_voice_workflow():
+    """Test the voice workflow directly before running the API"""
+    import sounddevice as sd
+    
+    print("Testing Voice Workflow for EOcean Shoe Store")
+    print("=" * 50)
+    
+    # Get audio device info
+    try:
+        input_device = sd.query_devices(kind='input')
+        output_device = sd.query_devices(kind='output')
+        in_samplerate = int(input_device['default_samplerate'])
+        out_samplerate = int(output_device['default_samplerate'])
+        
+        print(f"Input device: {input_device['name']}")
+        print(f"Output device: {output_device['name']}")
+        print(f"Input sample rate: {in_samplerate}")
+        print(f"Output sample rate: {out_samplerate}")
+        print()
+        
+    except Exception as e:
+        print(f"Error accessing audio devices: {e}")
+        print("Make sure you have audio input/output devices available")
+        return
+    
+    # Create context
+    context = UserContext(user_id="voice_test_user", email="test@example.com")
+    
+    print("Voice Assistant Ready!")
+    print("Commands:")
+    print("- Press Enter to start speaking")
+    print("- Press Enter again to stop recording")
+    print("- Type 'q' to quit")
+    print()
+    
+    while True:
+        try:
+            # Check for input to either provide voice or exit
+            cmd = input("Press Enter to speak (or type 'q' to exit): ")
+            if cmd.lower() == "q":
+                print("Exiting voice test...")
+                break
+                
+            print("🎤 Listening... (Press Enter to stop)")
+            recorded_chunks = []
+
+            # Start streaming from microphone until Enter is pressed
+            with sd.InputStream(
+                samplerate=in_samplerate,
+                channels=1,
+                dtype='int16',
+                callback=lambda indata, frames, time, status: recorded_chunks.append(indata.copy())
+            ):
+                input()  # Wait for Enter to stop recording
+
+            if not recorded_chunks:
+                print("No audio recorded. Try again.")
+                continue
+                
+            print("🔄 Processing your request...")
+            
+            # Concatenate chunks into single buffer
+            recording = np.concatenate(recorded_chunks, axis=0)
+
+            # Create AudioInput object
+            audio_input = AudioInput(
+                buffer=recording,
+                frame_rate=in_samplerate,
+                channels=1
+            )
+
+            # Process with voice pipeline
+            result = await voice_pipeline.run(audio_input=audio_input)
+
+            # Collect response chunks
+            response_chunks = []
+            async for event in result.stream():
+                if event.type == "voice_stream_event_audio":
+                    response_chunks.append(event.data)
+
+            if response_chunks:
+                response_audio_buffer = np.concatenate(response_chunks, axis=0)
+                
+                # Play response
+                print("🔊 Freddie is responding...")
+                sd.play(response_audio_buffer, samplerate=24000)  # OpenAI TTS sample rate
+                sd.wait()  # Wait for playback to complete
+                print("✅ Response complete")
+            else:
+                print("❌ No audio response generated")
+                
+            print("-" * 30)
+            
+        except KeyboardInterrupt:
+            print("\nExiting voice test...")
+            break
+        except Exception as e:
+            print(f"❌ Error during voice processing: {e}")
+            print("Try again or type 'q' to quit")
 
 
 async def main():
@@ -126,4 +246,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(test_voice_workflow())

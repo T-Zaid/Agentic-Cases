@@ -1,2 +1,8 @@
 openai-agents
+openai-agents[voice]
 python-dotenv
+sounddevice
+fastapi
+uvicorn
+pydantic
+numpy
