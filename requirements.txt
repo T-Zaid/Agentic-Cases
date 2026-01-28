@@ -1,5 +1,6 @@
 openai-agents
 openai-agents[voice]
+openai-agents[realtime]
 python-dotenv
 sounddevice
 fastapi
